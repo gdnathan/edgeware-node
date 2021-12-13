@@ -34,6 +34,7 @@ use frame_support::{
 	},
 	ConsensusEngineId, PalletId, RuntimeDebug,
 };
+use orml_traits::parameter_type_with_key;
 use scale_info::TypeInfo;
 use sp_std::{convert::TryFrom, marker::PhantomData, prelude::*};
 
@@ -58,23 +59,19 @@ pub use sp_core::{
 	u32_trait::{_1, _2, _3, _4, _5},
 	OpaqueMetadata, H160, H256, U256,
 };
-#[cfg(feature = "enable-commented")]
 use sp_runtime::{
-	traits::PostDispatchInfoOf,
-	transaction_validity::TransactionValidityError,
-};
-use sp_runtime::{
-	create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, FixedPointNumber, Perbill, Percent, Permill,
-	Perquintill,
+	create_runtime_str, generic, impl_opaque_keys,
 	traits::{
-		self, BlakeTwo256, Block as BlockT, ConvertInto, NumberFor, OpaqueKeys, SaturatedConversion,
-		StaticLookup
+		self, BlakeTwo256, Block as BlockT, ConvertInto, NumberFor, OpaqueKeys, SaturatedConversion, StaticLookup,
 	},
+	ApplyExtrinsicResult, FixedPointNumber, Perbill, Percent, Permill, Perquintill,
 };
 pub use sp_runtime::{
 	curve::PiecewiseLinear,
 	transaction_validity::{TransactionPriority, TransactionSource, TransactionValidity},
 };
+#[cfg(feature = "enable-commented")]
+use sp_runtime::{traits::PostDispatchInfoOf, transaction_validity::TransactionValidityError};
 
 use sp_core::crypto::Public;
 #[cfg(any(feature = "std", test))]
@@ -84,10 +81,7 @@ pub use sp_version::RuntimeVersion;
 pub use pallet_session::historical as pallet_session_historical;
 
 use fp_rpc::TransactionStatus;
-use pallet_evm::{
-	Account as EVMAccount, EnsureAddressTruncated,
-	HashedAddressMapping, Runner,
-};
+use pallet_evm::{Account as EVMAccount, EnsureAddressTruncated, HashedAddressMapping, Runner};
 
 pub use sp_inherents::{CheckInherentsResult, InherentData};
 use static_assertions::const_assert;
@@ -1239,6 +1233,44 @@ impl pallet_bags_list::Config for Runtime {
 	type WeightInfo = pallet_bags_list::weights::SubstrateWeight<Runtime>;
 }
 
+parameter_types! {
+	pub const MixerPalletId: PalletId = PalletId(*b"py/mixer");
+	pub const NativeCurrencyId: u32 = 0;
+	pub const RegistryStringLimit: u32 = 10;
+}
+
+use frame_support::traits::Nothing;
+use orml_currencies::BasicCurrencyAdapter;
+
+parameter_type_with_key! {
+	pub ExistentialDeposits: |currency_id: CurrencyId| -> Balance {
+		#[allow(clippy::match_ref_pats)] // false positive
+		match currency_id {
+			_ => 0,
+		}
+	};
+}
+
+impl orml_tokens::Config for Runtime {
+	type Amount = Amount;
+	type Balance = Balance;
+	type CurrencyId = u64;
+	type DustRemovalWhitelist = Nothing;
+	type Event = Event;
+	type ExistentialDeposits = ExistentialDeposits;
+	type MaxLocks = ();
+	type OnDust = ();
+	type WeightInfo = ();
+}
+
+impl orml_currencies::Config for Runtime {
+	type Event = Event;
+	type GetNativeCurrencyId = NativeCurrencyId;
+	type MultiCurrency = Tokens;
+	type NativeCurrency = BasicCurrencyAdapter<Runtime, Balances, Amount, BlockNumber>;
+	type WeightInfo = ();
+}
+
 construct_runtime!(
 	pub enum Runtime where
 		Block = Block,
@@ -1290,6 +1322,9 @@ construct_runtime!(
 		// REMOVED: NFT: nft::{Pallet, Call, Event<T>} = 44,
 		BaseFee: pallet_base_fee::{Pallet, Call, Storage, Config<T>, Event} = 45,
 		BagsList: pallet_bags_list::{Pallet, Call, Storage, Event<T>} = 46,
+
+		Currencies: orml_currencies::{Pallet, Call, Event<T>} = 47,
+		Tokens: orml_tokens::{Pallet, Storage, Call, Event<T>} = 48,
 	}
 );
 
@@ -1400,22 +1435,22 @@ impl fp_self_contained::SelfContainedCall for Call {
 		}
 	}
 
-	fn check_self_contained(&self) -> Option<Result<Self::SignedInfo,
-TransactionValidityError>> { 		match self {
+	fn check_self_contained(&self) -> Option<Result<Self::SignedInfo, TransactionValidityError>> {
+		match self {
 			Call::Ethereum(call) => call.check_self_contained(),
 			_ => None,
 		}
 	}
 
-	fn validate_self_contained(&self, info: &Self::SignedInfo) ->
-Option<TransactionValidity> { 		match self {
+	fn validate_self_contained(&self, info: &Self::SignedInfo) -> Option<TransactionValidity> {
+		match self {
 			Call::Ethereum(call) => call.validate_self_contained(info),
 			_ => None,
 		}
 	}
 
-	fn pre_dispatch_self_contained(&self, info: &Self::SignedInfo) ->
-Option<Result<(), TransactionValidityError>> { 		match self {
+	fn pre_dispatch_self_contained(&self, info: &Self::SignedInfo) -> Option<Result<(), TransactionValidityError>> {
+		match self {
 			Call::Ethereum(call) => call.pre_dispatch_self_contained(info),
 			_ => None,
 		}
@@ -1427,8 +1462,8 @@ Option<Result<(), TransactionValidityError>> { 		match self {
 	) -> Option<sp_runtime::DispatchResultWithInfo<PostDispatchInfoOf<Self>>> {
 		match self {
 			call @ Call::Ethereum(pallet_ethereum::Call::transact { .. }) => {
-				Some(call.dispatch(Origin::from(pallet_ethereum::RawOrigin::
-EthereumTransaction(info)))) 			}
+				Some(call.dispatch(Origin::from(pallet_ethereum::RawOrigin::EthereumTransaction(info))))
+			}
 			_ => None,
 		}
 	}

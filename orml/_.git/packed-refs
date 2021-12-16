@@ -1,0 +1,20 @@
+# pack-refs with: peeled fully-peeled sorted 
+33bc5992200e02e6fe3d62407803b58a4bbf82d5 refs/remotes/origin/fer-smaller-call-sizes
+a9c41b59a3fa8347ce1de0d3cdbe89a22a142303 refs/remotes/origin/master
+03fe5543968c3774738ab38c64323b1d1c7d58d4 refs/remotes/origin/polkadot-v0.9.12
+f16444303db6f4b3e6d1052251aec386673a4ebc refs/remotes/origin/refactor_bencher
+4177cd6961ff6dd0c7d80ff713ed4839b466cae8 refs/remotes/origin/relay_account
+5ba42f532b72d71a28aaa18421855de003b9ca71 refs/remotes/origin/release-2.0.0
+befa21562537b4a9a6de6a8d5985a10835d64df8 refs/remotes/origin/release-karura-1.4.3
+4368abf77b2f08f6fc7cc6612f19460d748e6f4d refs/remotes/origin/release-karura-1.4.4
+72b0e5249efc3cfe4f521d2331b967716580f1c8 refs/remotes/origin/release-karura-1.5.1
+38b53d39a59c230f4d80d8d8da60cd8c14073523 refs/remotes/origin/release-karura-1.6.0
+5b2c646c82ffb24a4d407e757b56d624c629008d refs/remotes/origin/update-deps
+ad8a7c30aca075e16e876d137c60fbd4d0695c1a refs/remotes/origin/v0.9.13
+4cf321e2a78720c2426a3c940e4b764cc88aa07e refs/tags/0.0.1
+8fa937a270e8914b489053d762dfcda377c3f922 refs/tags/0.1.1
+3c5add7d379d1b845f73a6c07cc96685baa8e2f9 refs/tags/0.2.0
+e5f3be0372e7f2f2e2c9a0079633e92115c8feb4 refs/tags/0.3.0
+3c6aa1e31793d61ca44accfc40e93609b29f18ba refs/tags/0.3.1
+c76ac872f8ec44ac5f44195d4c353bdd199a8e87 refs/tags/0.3.2
+aebfafc9323a825822874e1525c4a93431f7816a refs/tags/0.4.0

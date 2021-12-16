@@ -77,6 +77,11 @@ pub use sp_runtime::{
 };
 
 use sp_core::crypto::Public;
+use orml_traits::parameter_type_with_key;
+use frame_support::traits::Nothing;
+use orml_currencies::BasicCurrencyAdapter;
+pub use edgeware_primitives::currency::{CurrencyId,ReserveIdentifier,TokenInfo,TokenSymbol,};
+
 #[cfg(any(feature = "std", test))]
 pub use sp_version::NativeVersion;
 pub use sp_version::RuntimeVersion;
@@ -382,7 +387,7 @@ impl pallet_indices::Config for Runtime {
 
 #[cfg(feature = "no-reaping")]
 parameter_types! {
-	pub const ExistentialDeposit: Balance = 0;
+	pub const NativeTokenExistentialDeposit: Balance = 0;
 	// For weight estimation, we assume that the most locks on an individual account will be 50.
 	// This number may need to be adjusted in the future if this assumption no longer holds true.
 	pub const MaxLocks: u32 = 50;
@@ -391,7 +396,7 @@ parameter_types! {
 
 #[cfg(not(feature = "no-reaping"))]
 parameter_types! {
-	pub const ExistentialDeposit: Balance = 1 * MILLICENTS;
+	pub const NativeTokenExistentialDeposit: Balance = 1 * MILLICENTS;
 	// For weight estimation, we assume that the most locks on an individual account will be 50.
 	// This number may need to be adjusted in the future if this assumption no longer holds true.
 	pub const MaxLocks: u32 = 50;
@@ -403,10 +408,10 @@ impl pallet_balances::Config for Runtime {
 	type Balance = Balance;
 	type DustRemoval = ();
 	type Event = Event;
-	type ExistentialDeposit = ExistentialDeposit;
+	type ExistentialDeposit = NativeTokenExistentialDeposit;
 	type MaxLocks = MaxLocks;
 	type MaxReserves = MaxReserves;
-	type ReserveIdentifier = [u8; 8];
+	type ReserveIdentifier = ReserveIdentifier;
 	type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
 }
 
@@ -1221,6 +1226,127 @@ impl pallet_base_fee::Config for Runtime {
 	type Threshold = BaseFeeThreshold;
 }
 
+pub fn dollar(currency_id: CurrencyId) -> Balance {
+	10u128.saturating_pow(currency_id.decimals().expect("Not support Non-Token decimals").into())
+}
+
+pub fn cent(currency_id: CurrencyId) -> Balance {
+	dollar(currency_id) / 100
+}
+
+pub fn millicent(currency_id: CurrencyId) -> Balance {
+	cent(currency_id) / 1000
+}
+
+pub fn microcent(currency_id: CurrencyId) -> Balance {
+	millicent(currency_id) / 1000
+}
+
+// Taken to preserve the order of Acala/Karura
+parameter_type_with_key! {
+	pub ExistentialDeposits: |currency_id: CurrencyId| -> Balance {
+		match currency_id {
+			CurrencyId::Token(symbol) => match symbol {
+				// TokenSymbol::KUSD => cent(*currency_id),
+				TokenSymbol::KSM => 10 * millicent(*currency_id),
+				// TokenSymbol::LKSM => 50 * millicent(*currency_id),
+				// TokenSymbol::BNC => 800 * millicent(*currency_id),  // 80BNC = 1KSM
+				// TokenSymbol::VSKSM => 10 * millicent(*currency_id),  // 1VSKSM = 1KSM
+				// TokenSymbol::PHA => 4000 * millicent(*currency_id), // 400PHA = 1KSM
+				// TokenSymbol::KINT => 13333 * microcent(*currency_id), // 1.33 KINT = 1 KSM
+				// TokenSymbol::KBTC => 66 * microcent(*currency_id), // 1KBTC = 150 KSM
+
+				// TokenSymbol::ACA |
+				// TokenSymbol::AUSD |
+				TokenSymbol::DOT |
+				// TokenSymbol::LDOT |
+				// TokenSymbol::RENBTC |
+				// TokenSymbol::KAR |
+				// TokenSymbol::CASH 
+				TokenSymbol::EDG
+				=> Balance::max_value() // unsupported
+			},
+			CurrencyId::DexShare(dex_share_0, _) => {
+				let currency_id_0: CurrencyId = (*dex_share_0).into();
+
+				// initial dex share amount is calculated based on currency_id_0,
+				// use the ED of currency_id_0 as the ED of lp token.
+				if currency_id_0 == GetNativeCurrencyId::get() {
+					NativeTokenExistentialDeposit::get()
+				} else if let CurrencyId::Erc20(_) = currency_id_0 {
+					// LP token with erc20
+					1
+				} else {
+					Self::get(&currency_id_0)
+				}
+			},
+			CurrencyId::Erc20(_) => Balance::max_value(), // not handled by orml-tokens
+			// CurrencyId::StableAssetPoolToken(_) => Balance::max_value(), // TODO: update this before we enable StableAsset
+			// CurrencyId::LiquidCroadloan(_) => Balance::max_value(), // TODO: unsupported
+			// CurrencyId::ForeignAsset(foreign_asset_id) => {
+			// 	XcmForeignAssetIdMapping::<Runtime>::get_asset_metadata(*foreign_asset_id).
+			// 		map_or(Balance::max_value(), |metatata| metatata.minimal_balance)
+			// },
+		}
+	};
+}
+
+impl orml_tokens::Config for Runtime {
+	type Event = Event;
+	type Balance = Balance;
+	type Amount = Amount;
+	type CurrencyId = CurrencyId;
+	type WeightInfo = ();
+	type ExistentialDeposits = ExistentialDeposits;
+	type OnDust = ();
+	type MaxLocks = MaxLocks;
+	type DustRemovalWhitelist = Nothing;
+}
+
+parameter_types! {
+	pub const GetNativeCurrencyId: CurrencyId = CurrencyId::Token(TokenSymbol::EDG);
+}
+
+impl orml_currencies::Config for Runtime {
+	type Event = Event;
+	type MultiCurrency = Tokens;
+	type NativeCurrency = BasicCurrencyAdapter<Runtime, Balances, Amount, BlockNumber>;
+	type GetNativeCurrencyId = GetNativeCurrencyId;
+	type WeightInfo = ();
+}
+
+parameter_types! {
+	pub const NftPalletId: PalletId = PalletId(*b"edge/NFT");
+	pub CreateClassDeposit: Balance = 500 * MILLICENTS;
+	pub CreateTokenDeposit: Balance = 100 * MILLICENTS;
+	pub MaxAttributesBytes: u32 = 2048;
+}
+
+impl nft::Config for Runtime {
+	type Event = Event;
+	type Currency = Balances;
+	type CreateClassDeposit = CreateClassDeposit;
+	type CreateTokenDeposit = CreateTokenDeposit;
+	type DataDepositPerByte = DataDepositPerByte;
+	type PalletId = NftPalletId;
+	type MaxAttributesBytes = MaxAttributesBytes;
+	type WeightInfo = ();
+}
+
+parameter_types! {
+	pub MaxClassMetadata: u32 = 1024;
+	pub MaxTokenMetadata: u32 = 1024;
+}
+
+impl orml_nft::Config for Runtime {
+	type ClassId = u32;
+	type TokenId = u64;
+	type ClassData = nft::ClassData<Balance>;
+	type TokenData = nft::TokenData<Balance>;
+	type MaxClassMetadata = MaxClassMetadata;
+	type MaxTokenMetadata = MaxTokenMetadata;
+}
+
 impl treasury_reward::Config for Runtime {
 	type Currency = Balances;
 	type Event = Event;
@@ -1284,10 +1410,10 @@ construct_runtime!(
 		ElectionProviderMultiPhase: pallet_election_provider_multi_phase::{Pallet, Call, Storage, Event<T>, ValidateUnsigned} = 39,
 		DynamicFee: pallet_dynamic_fee::{Pallet, Call, Storage, Inherent} = 40,
 
-		// REMOVED: Tokens: webb_tokens::{Pallet, Call, Storage, Event<T>} = 41,
-		// REMOVED: Currencies: webb_currencies::{Pallet, Call, Storage, Event<T>} = 42,
-		// REMOVED: NonFungibleTokenModule: orml_nft::{Pallet, Storage, Config<T>} = 43,
-		// REMOVED: NFT: nft::{Pallet, Call, Event<T>} = 44,
+		Tokens: orml_tokens::{Pallet, Storage, Event<T>} = 41,
+		Currencies: orml_currencies::{Pallet, Call, Event<T>} = 42,
+		OrmlNFT: orml_nft::{Pallet, Storage} = 43,
+		NFT: nft::{Pallet, Call, Event<T>} = 44,
 		BaseFee: pallet_base_fee::{Pallet, Call, Storage, Config<T>, Event} = 45,
 		BagsList: pallet_bags_list::{Pallet, Call, Storage, Event<T>} = 46,
 	}

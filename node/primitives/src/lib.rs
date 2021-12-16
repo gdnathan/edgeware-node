@@ -19,6 +19,8 @@
 #![warn(missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod currency;
+
 use sp_runtime::{
 	generic,
 	traits::{BlakeTwo256, IdentifyAccount, Verify},
@@ -73,8 +75,6 @@ pub type BlockId = generic::BlockId<Block>;
 pub type AssetId = u32;
 /// Token amount type for tokens module
 pub type Amount = i128;
-/// Currency id for tokens module
-pub type CurrencyId = u64;
 
 /// App-specific crypto used for reporting equivocation/misbehavior in AURA and
 /// GRANDPA. Any rewards for misbehavior reporting will be paid out to this

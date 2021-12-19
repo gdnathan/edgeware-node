@@ -27,9 +27,10 @@ use edgeware_executor::NativeElseWasmExecutor;
 use edgeware_runtime::RuntimeApi;
 #[cfg(feature = "frontier-block-import")]
 use fc_consensus::FrontierBlockImport;
+use fc_mapping_sync::{MappingSyncWorker, SyncStrategy};
 
-
-use fc_rpc_core::types::{FilterPool};
+use fc_rpc::EthTask;
+use fc_rpc_core::types::{FeeHistoryCache, FilterPool};
 use futures::prelude::*;
 use sc_cli::SubstrateCli;
 use sc_consensus_aura::{self, ImportQueueParams, SlotProportion, StartAuraParams};
@@ -45,7 +46,7 @@ use std::{
 	sync::{Arc, Mutex},
 	time::Duration,
 };
-use sc_client_api::ExecutorProvider;
+use sc_client_api::{ExecutorProvider, client::BlockchainEvents};
 
 type Executor = NativeElseWasmExecutor<EdgewareExecutor>;
 type FullClient = sc_service::TFullClient<Block, RuntimeApi, Executor>;
@@ -125,6 +126,7 @@ pub fn new_partial(
 			Option<FilterPool>,
 			Arc<fc_db::Backend<Block>>,
 			Option<Telemetry>,
+			FeeHistoryCache,
 		),
 	>,
 	ServiceError,
@@ -144,6 +146,7 @@ pub fn new_partial(
 		config.wasm_method,
 		config.default_heap_pages,
 		config.max_runtime_instances,
+		config.runtime_cache_size,
 	);
 
 	let (
@@ -159,7 +162,7 @@ pub fn new_partial(
 	let client = Arc::new(client);
 
 	let telemetry = telemetry.map(|(worker, telemetry)| {
-		task_manager.spawn_handle().spawn("telemetry", worker.run());
+		task_manager.spawn_handle().spawn("telemetry", None, worker.run());
 		telemetry
 	});
 
@@ -174,6 +177,7 @@ pub fn new_partial(
 	);
 
 	let filter_pool: Option<FilterPool> = Some(Arc::new(Mutex::new(BTreeMap::new())));
+	let fee_history_cache: FeeHistoryCache = Arc::new(Mutex::new(BTreeMap::new()));
 
 	let frontier_backend = open_frontier_backend(config)?;
 
@@ -238,6 +242,7 @@ pub fn new_partial(
 			filter_pool,
 			frontier_backend,
 			telemetry,
+			fee_history_cache,
 		),
 	})
 }
@@ -262,7 +267,7 @@ pub fn new_full_base(mut config: Configuration, cli: &Cli, rpc_config: RpcConfig
 		keystore_container,
 		select_chain,
 		transaction_pool,
-		other: (consensus_result, filter_pool, frontier_backend, mut telemetry),
+		other: (consensus_result, filter_pool, frontier_backend, mut telemetry, fee_history_cache),
 	} = new_partial(&config, cli)?;
 
 	let (block_import, grandpa_link) = consensus_result;
@@ -292,8 +297,7 @@ pub fn new_full_base(mut config: Configuration, cli: &Cli, rpc_config: RpcConfig
 			client: client.clone(),
 			transaction_pool: transaction_pool.clone(),
 			spawn_handle: task_manager.spawn_handle(),
-			import_queue,
-			on_demand: None,
+			import_queue,			
 			block_announce_validator_builder: None,
 			warp_sync: warp_sync,
 		})?;
@@ -308,13 +312,6 @@ pub fn new_full_base(mut config: Configuration, cli: &Cli, rpc_config: RpcConfig
 	let enable_grandpa = !config.disable_grandpa;
 	let prometheus_registry = config.prometheus_registry().cloned();
 
-	edgeware_rpc::spawn_essential_tasks(edgeware_rpc::SpawnTasksParams {
-		task_manager: &task_manager,
-		client: client.clone(),
-		substrate_backend: backend.clone(),
-		frontier_backend: frontier_backend.clone(),
-		filter_pool: filter_pool.clone(),
-	});
 	let ethapi_cmd = rpc_config.ethapi.clone();
 	let tracing_requesters =
 		if ethapi_cmd.contains(&EthApiCmd::Debug) || ethapi_cmd.contains(&EthApiCmd::Trace) {
@@ -334,6 +331,9 @@ pub fn new_full_base(mut config: Configuration, cli: &Cli, rpc_config: RpcConfig
 				trace: None,
 			}
 		};
+
+	let fee_history_limit = cli.run.fee_history_limit;
+	let overrides = edgeware_rpc::overrides_handle(client.clone());
 
 	let (rpc_extensions_builder, rpc_setup) = {
 		let justification_stream = grandpa_link.justification_stream();
@@ -356,6 +356,7 @@ pub fn new_full_base(mut config: Configuration, cli: &Cli, rpc_config: RpcConfig
 		let is_authority = config.role.clone().is_authority();
 		let _keystore = keystore_container.sync_keystore();
 		let subscription_executor = sc_rpc::SubscriptionTaskExecutor::new(task_manager.spawn_handle());
+		let fee_history_cache = fee_history_cache.clone();
 
 		let rpc_extensions_builder = move |deny_unsafe, _| {
 			let deps = edgeware_rpc::FullDeps {
@@ -379,6 +380,8 @@ pub fn new_full_base(mut config: Configuration, cli: &Cli, rpc_config: RpcConfig
 				filter_pool: filter_pool.clone(),
 				backend: frontier_backend.clone(),
 				max_past_logs,
+				fee_history_limit,
+				fee_history_cache: fee_history_cache.clone(),
 				ethapi_cmd: ethapi.clone(),
 			};
 
@@ -405,13 +408,54 @@ pub fn new_full_base(mut config: Configuration, cli: &Cli, rpc_config: RpcConfig
 		task_manager: &mut task_manager,
 		transaction_pool: transaction_pool.clone(),
 		rpc_extensions_builder: Box::new(rpc_extensions_builder),
-		on_demand: None,
-		remote_blockchain: None,
 		backend: backend.clone(),
 		system_rpc_tx,
 		config,
 		telemetry: telemetry.as_mut(),
 	})?;
+
+	task_manager.spawn_essential_handle().spawn(
+		"frontier-mapping-sync-worker",
+		Some("frontier"),
+		MappingSyncWorker::new(
+			client.import_notification_stream(),
+			Duration::new(6, 0),
+			client.clone(),
+			backend.clone(),
+			frontier_backend.clone(),
+			SyncStrategy::Normal,
+		)
+		.for_each(|()| futures::future::ready(())),
+	);
+
+	// Spawn Frontier EthFilterApi maintenance task.
+	if let Some(filter_pool) = filter_pool {
+		// Each filter is allowed to stay in the pool for 100 blocks.
+		const FILTER_RETAIN_THRESHOLD: u64 = 100;
+		task_manager.spawn_essential_handle().spawn(
+			"frontier-filter-pool",
+			Some("frontier"),
+			EthTask::filter_pool_task(Arc::clone(&client), filter_pool, FILTER_RETAIN_THRESHOLD),
+		);
+	}
+
+	// Spawn Frontier FeeHistory cache maintenance task.
+	task_manager.spawn_essential_handle().spawn(
+		"frontier-fee-history",
+		Some("frontier"),
+		EthTask::fee_history_task(
+			Arc::clone(&client),
+			Arc::clone(&overrides),
+			fee_history_cache,
+			fee_history_limit,
+		),
+	);
+
+	task_manager.spawn_essential_handle().spawn(
+		"frontier-schema-cache-task",
+		Some("frontier"),
+		EthTask::ethereum_schema_cache_task(Arc::clone(&client), Arc::clone(&frontier_backend)),
+	);
 
 	let (shared_voter_state, _finality_proof_provider) = rpc_setup;
 
@@ -470,7 +514,7 @@ pub fn new_full_base(mut config: Configuration, cli: &Cli, rpc_config: RpcConfig
 		// fails we take down the service with it.
 		task_manager
 			.spawn_essential_handle()
-			.spawn_blocking("aura-proposer", aura);
+			.spawn_blocking("aura-proposer", Some("block-authoring"), aura);
 	}
 
 	// Spawn authority discovery module.
@@ -492,7 +536,7 @@ pub fn new_full_base(mut config: Configuration, cli: &Cli, rpc_config: RpcConfig
 
 		task_manager
 			.spawn_handle()
-			.spawn("authority-discovery-worker", authority_discovery_worker.run());
+			.spawn("authority-discovery-worker", None, authority_discovery_worker.run());
 	}
 
 	// if the node isn't actively participating in consensus then it doesn't
@@ -535,7 +579,7 @@ pub fn new_full_base(mut config: Configuration, cli: &Cli, rpc_config: RpcConfig
 		// if it fails we take down the service with it.
 		task_manager
 			.spawn_essential_handle()
-			.spawn_blocking("grandpa-voter", sc_finality_grandpa::run_grandpa_voter(grandpa_config)?);
+			.spawn_blocking("grandpa-voter", None, sc_finality_grandpa::run_grandpa_voter(grandpa_config)?);
 	}
 
 	network_starter.start_network();

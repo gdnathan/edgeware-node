@@ -21,6 +21,9 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
+// Use Moonbeam's implementation of SelfContainedCall
+mod impl_self_contained_call;
+
 pub use edgeware_primitives::{AccountId, AccountIndex, Balance, BlockNumber, Hash, Index, Moment, Nonce, Signature};
 use frame_support::{
 	construct_runtime, parameter_types,
@@ -58,22 +61,18 @@ pub use sp_core::{
 	u32_trait::{_1, _2, _3, _4, _5},
 	OpaqueMetadata, H160, H256, U256,
 };
-#[cfg(feature = "enable-commented")]
-use sp_runtime::{
-	traits::PostDispatchInfoOf,
-	transaction_validity::TransactionValidityError,
-};
 use sp_runtime::{
 	create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, FixedPointNumber, Perbill, Percent, Permill,
 	Perquintill, RuntimeAppPublic,
 	traits::{
-		self, BlakeTwo256, Block as BlockT, ConvertInto, NumberFor, OpaqueKeys, SaturatedConversion,
-		StaticLookup
+		self, BlakeTwo256, Block as BlockT, ConvertInto, Dispatchable, NumberFor, OpaqueKeys, SaturatedConversion,
+		StaticLookup, PostDispatchInfoOf
 	},
 };
 pub use sp_runtime::{
 	curve::PiecewiseLinear,
-	transaction_validity::{TransactionPriority, TransactionSource, TransactionValidity},
+	transaction_validity::{InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
+		TransactionValidityError, ValidTransactionBuilder,},
 };
 
 use orml_traits::parameter_type_with_key;
@@ -1493,16 +1492,11 @@ pub type SignedExtra = (
 	pallet_transaction_payment::ChargeTransactionPayment<Runtime>,
 );
 /// Unchecked extrinsic type as expected by this runtime.
-// pub type UncheckedExtrinsic = fp_self_contained::UncheckedExtrinsic<Address,
-// Call, Signature, SignedExtra>;
-pub type UncheckedExtrinsic = generic::UncheckedExtrinsic<Address, Call, Signature, SignedExtra>;
-
+pub type UncheckedExtrinsic = fp_self_contained::UncheckedExtrinsic<Address, Call, Signature, SignedExtra>;
 /// The payload being signed in transactions.
 pub type SignedPayload = generic::SignedPayload<Call, SignedExtra>;
 /// Extrinsic type that has already been checked.
-// pub type CheckedExtrinsic = fp_self_contained::CheckedExtrinsic<AccountId,
-// Call, SignedExtra, H160>;
-pub type CheckedExtrinsic = generic::CheckedExtrinsic<AccountId, Call, SignedExtra>;
+pub type CheckedExtrinsic = fp_self_contained::CheckedExtrinsic<AccountId, Call, SignedExtra, H160>;
 
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
@@ -1604,6 +1598,9 @@ EthereumTransaction(info)))) 			}
 		}
 	}
 }
+
+
+impl_self_contained_call!();
 
 impl_runtime_apis! {
 	impl sp_api::Core<Block> for Runtime {
@@ -1878,14 +1875,14 @@ impl_runtime_apis! {
 			TxPoolResponse {
 				ready: xts_ready
 					.into_iter()
-					.filter_map(|xt| match xt.function {
+					.filter_map(|xt| match xt.0.function {
 						Call::Ethereum(transact { transaction }) => Some(transaction),
 						_ => None,
 					})
 					.collect(),
 				future: xts_future
 					.into_iter()
-					.filter_map(|xt| match xt.function {
+					.filter_map(|xt| match xt.0.function {
 						Call::Ethereum(transact { transaction }) => Some(transaction),
 						_ => None,
 					})
@@ -2012,7 +2009,7 @@ impl_runtime_apis! {
 		fn extrinsic_filter(
 			xts: Vec<<Block as BlockT>::Extrinsic>,
 		) -> Vec<EthereumTransaction> {
-			xts.into_iter().filter_map(|xt| match xt.function {
+			xts.into_iter().filter_map(|xt| match xt.0.function {
 				Call::Ethereum(transact { transaction }) => Some(transaction),
 				_ => None
 			}).collect::<Vec<EthereumTransaction>>()

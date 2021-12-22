@@ -21,9 +21,6 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
-// Use Moonbeam's implementation of SelfContainedCall
-mod impl_self_contained_call;
-
 pub use edgeware_primitives::{AccountId, AccountIndex, Balance, BlockNumber, Hash, Index, Moment, Nonce, Signature};
 use frame_support::{
 	construct_runtime, parameter_types,
@@ -1554,7 +1551,6 @@ use super::*;
 	}
 }
 
-#[cfg(feature = "enable-commented")]
 impl fp_self_contained::SelfContainedCall for Call {
 	type SignedInfo = H160;
 
@@ -1565,22 +1561,32 @@ impl fp_self_contained::SelfContainedCall for Call {
 		}
 	}
 
-	fn check_self_contained(&self) -> Option<Result<Self::SignedInfo,
-TransactionValidityError>> { 		match self {
+	fn check_self_contained(
+		&self
+	) -> Option<Result<Self::SignedInfo, TransactionValidityError>> {
+		match self {
 			Call::Ethereum(call) => call.check_self_contained(),
 			_ => None,
 		}
 	}
 
-	fn validate_self_contained(&self, info: &Self::SignedInfo) ->
-Option<TransactionValidity> { 		match self {
-			Call::Ethereum(call) => call.validate_self_contained(info),
+	fn validate_self_contained(
+		&self,
+		signed_info: &Self::SignedInfo
+	) -> Option<TransactionValidity> {
+		match self {
+			Call::Ethereum(ref call) => {
+				call.validate_self_contained(signed_info)
+			}
 			_ => None,
 		}
 	}
 
-	fn pre_dispatch_self_contained(&self, info: &Self::SignedInfo) ->
-Option<Result<(), TransactionValidityError>> { 		match self {
+	fn pre_dispatch_self_contained(
+		&self,
+		info: &Self::SignedInfo,
+	) -> Option<Result<(), TransactionValidityError>> {
+		match self {
 			Call::Ethereum(call) => call.pre_dispatch_self_contained(info),
 			_ => None,
 		}
@@ -1591,16 +1597,15 @@ Option<Result<(), TransactionValidityError>> { 		match self {
 		info: Self::SignedInfo,
 	) -> Option<sp_runtime::DispatchResultWithInfo<PostDispatchInfoOf<Self>>> {
 		match self {
-			call @ Call::Ethereum(pallet_ethereum::Call::transact { .. }) => {
-				Some(call.dispatch(Origin::from(pallet_ethereum::RawOrigin::
-EthereumTransaction(info)))) 			}
+			call @ Call::Ethereum(pallet_ethereum::Call::transact { .. }) => Some(
+				call.dispatch(Origin::from(
+					pallet_ethereum::RawOrigin::EthereumTransaction(info)
+				))
+			),
 			_ => None,
 		}
 	}
 }
-
-
-impl_self_contained_call!();
 
 impl_runtime_apis! {
 	impl sp_api::Core<Block> for Runtime {

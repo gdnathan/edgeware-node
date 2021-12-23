@@ -15,14 +15,14 @@ serde = { version = "1.0.124", optional = true }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
 num_enum = { version = "0.5.1", default-features = false }
 scale-info = { version = "1.0.0", default-features = false, features = ["derive"] }
-frame-system = { git = "https://github.com/remzrn/substrate", branch = "remz-substrate-upgrade-20211218", default-features = false }
-sp-application-crypto = { git = "https://github.com/remzrn/substrate", branch = "remz-substrate-upgrade-20211218", default-features = false }
-sp-core = { git = "https://github.com/remzrn/substrate", branch = "remz-substrate-upgrade-20211218", default-features = false }
-sp-runtime = { git = "https://github.com/remzrn/substrate", branch = "remz-substrate-upgrade-20211218", default-features = false }
-sp-std = { git = "https://github.com/remzrn/substrate", branch = "remz-substrate-upgrade-20211218", default-features = false }
+frame-system = { git = "https://github.com/edgeware-network/substrate", branch = "erup-5", default-features = false }
+sp-application-crypto = { git = "https://github.com/edgeware-network/substrate", branch = "erup-5", default-features = false }
+sp-core = { git = "https://github.com/edgeware-network/substrate", branch = "erup-5", default-features = false }
+sp-runtime = { git = "https://github.com/edgeware-network/substrate", branch = "erup-5", default-features = false }
+sp-std = { git = "https://github.com/edgeware-network/substrate", branch = "erup-5", default-features = false }
 
 [dev-dependencies]
-sp-serializer = { git = "https://github.com/remzrn/substrate", branch = "remz-substrate-upgrade-20211218" }
+sp-serializer = { git = "https://github.com/edgeware-network/substrate", branch = "erup-5" }
 pretty_assertions = "0.6.1"
 
 [features]

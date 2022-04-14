@@ -2,7 +2,7 @@
 name = "edge-treasury-reward"
 version = "1.0.0"
 authors = ["drewstone <drewstone329@gmail.com>"]
-edition = "2018"
+edition = "2021"
 license = "GPL-3.0-or-later WITH Classpath-exception-2.0"
 description = "Edgeware treasury reward module"
 
@@ -13,7 +13,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 serde = { version = "1.0", default-features = false, optional = true }
 safe-mix = { version = "1.0", default-features = false }
 codec = { package = "parity-scale-codec", version = "2.0.0", default-features = false, features = ["derive"] }
-sp-std = { version = "3.0", default-features = false }
+sp-std = { tag = "monthly-2022-04", git = "https://github.com/paritytech/substrate", default-features = false }
 sp-runtime = { version = "3.0", default-features = false }
 frame-support = { version = "3.0", default-features = false }
 frame-system = { version = "3.0", default-features = false }
@@ -21,6 +21,7 @@ pallet-authorship = { version = "3.0", default-features = false }
 pallet-staking = { version = "3.0", default-features = false }
 pallet-balances = { version = "3.0", default-features = false }
 pallet-treasury = { version = "3.0", default-features = false }
+scale-info = { version = "1.0.0", default-features = false, features = ["derive"] }
 
 [dev-dependencies]
 sp-io = { version = "3.0", default-features = false }
@@ -44,4 +45,5 @@ std = [
 	"frame-system/std",
 	"pallet-staking/std",
 	"pallet-treasury/std",
+	"scale-info/std",
 ]

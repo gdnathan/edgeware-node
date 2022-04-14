@@ -280,7 +280,7 @@ parameter_types! {
 }
 
 /// The type used to represent the kinds of proxying allowed.
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Encode, Decode, RuntimeDebug)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Encode, Decode, RuntimeDebug, scale_info::TypeInfo)]
 #[repr(u8)]
 pub enum ProxyType {
 	Any = 0,
@@ -1281,7 +1281,7 @@ impl_runtime_apis! {
 
 	impl sp_api::Metadata<Block> for Runtime {
 		fn metadata() -> OpaqueMetadata {
-			Runtime::metadata().into()
+            OpaqueMetadata::new(Runtime::metadata().into())
 		}
 	}
 

@@ -22,6 +22,7 @@ pallet-staking = { version = "3.0", default-features = false }
 pallet-balances = { version = "3.0", default-features = false }
 pallet-treasury = { version = "3.0", default-features = false }
 scale-info = { version = "1.0.0", default-features = false, features = ["derive"] }
+instant = { version = "0.1.12" }
 
 [dev-dependencies]
 sp-io = { version = "3.0", default-features = false }
